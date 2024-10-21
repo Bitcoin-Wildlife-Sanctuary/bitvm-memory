@@ -1,5 +1,6 @@
 use crate::lookup_table::LookupTableVar;
 use anyhow::{Error, Result};
+use bitcoin::opcodes::Ordinary::OP_ADD;
 use bitcoin_circle_stark::treepp::*;
 use bitcoin_script_dsl::bvar::{AllocVar, AllocationMode, BVar};
 use bitcoin_script_dsl::constraint_system::{ConstraintSystemRef, Element};
@@ -90,6 +91,67 @@ impl AllocVar for U4Var {
             cs: cs.clone(),
         })
     }
+}
+
+impl U4Var {
+    pub fn add_no_overflow(&self, rhs: &Self) -> Self {
+        let self_value = self.value;
+        let rhs_value = rhs.value;
+
+        let res_value = self_value + rhs_value;
+        assert!(res_value < 16);
+
+        let cs = self.cs().and(&rhs.cs());
+        cs.insert_script(u4_add_no_overflow, [self.variable, rhs.variable])
+            .unwrap();
+        U4Var::new_function_output(&cs, res_value).unwrap()
+    }
+
+    pub fn get_shl1(&self, table: &LookupTableVar) -> Self {
+        let res_value = (self.value << 1) & 15;
+        let cs = self.cs().and(&table.cs());
+        cs.insert_script_complex(
+            u4_get_shl1,
+            [self.variable],
+            &Options::new().with_u32("shl1_table_ref", table.shl1table_var.variables[0] as u32),
+        )
+        .unwrap();
+        U4Var::new_function_output(&cs, res_value).unwrap()
+    }
+
+    pub fn get_shr3(&self, table: &LookupTableVar) -> Self {
+        let res_value = self.value >> 3;
+        let cs = self.cs().and(&table.cs());
+        cs.insert_script_complex(
+            u4_get_shr3,
+            [self.variable],
+            &Options::new().with_u32("shr3_table_ref", table.shr3table_var.variables[0] as u32),
+        )
+        .unwrap();
+        U4Var::new_function_output(&cs, res_value).unwrap()
+    }
+}
+
+fn u4_add_no_overflow() -> Script {
+    Script::from(vec![OP_ADD.to_u8()])
+}
+
+fn u4_get_shl1(stack: &mut Stack, options: &Options) -> Result<Script> {
+    let last_shl1_table_elem = options.get_u32("shl1_table_ref")?;
+    let k_shl1 = stack.get_relative_position(last_shl1_table_elem as usize)? - 15;
+
+    Ok(script! {
+        { k_shl1 } OP_ADD OP_PICK
+    })
+}
+
+fn u4_get_shr3(stack: &mut Stack, options: &Options) -> Result<Script> {
+    let last_shr3_table_elem = options.get_u32("shr3_table_ref")?;
+    let k_shr3 = stack.get_relative_position(last_shr3_table_elem as usize)? - 15;
+
+    Ok(script! {
+        { k_shr3 } OP_ADD OP_PICK
+    })
 }
 
 #[cfg(test)]

@@ -1,3 +1,4 @@
+use crate::lookup_table::LookupTableVar;
 use crate::u4::U4Var;
 use anyhow::Result;
 use bitcoin_circle_stark::treepp::*;
@@ -152,6 +153,17 @@ impl U32Var {
         ];
         Self { limbs: new_limbs }
     }
+
+    pub fn rotate_right_shift_7(self, table: &LookupTableVar) -> Self {
+        let mut limbs = vec![];
+        for i in 0..8 {
+            let first = &self.limbs[(i + 1) % 8].get_shr3(table);
+            let second = &self.limbs[(i + 2) % 8].get_shl1(table);
+            limbs.push(first.add_no_overflow(second));
+        }
+        let limbs: [U4Var; 8] = limbs.try_into().unwrap();
+        Self { limbs }
+    }
 }
 
 fn u32_u4limbs_add() -> Script {
@@ -184,6 +196,7 @@ fn u32_u4limbs_add() -> Script {
 
 #[cfg(test)]
 mod test {
+    use crate::lookup_table::LookupTableVar;
     use crate::u32::U32Var;
     use bitcoin_circle_stark::treepp::*;
     use bitcoin_script_dsl::bvar::{AllocVar, BVar};
@@ -227,5 +240,38 @@ mod test {
             )
             .unwrap();
         }
+    }
+
+    #[test]
+    fn test_u32_rotate_right_shift_7() {
+        let mut prng = ChaCha20Rng::seed_from_u64(0);
+
+        let cs = ConstraintSystem::new_ref();
+        let a: u32 = prng.gen();
+        let shifted_a = a.rotate_right(7);
+
+        let a_var = U32Var::new_program_input(&cs, a).unwrap();
+        let table_var = LookupTableVar::new_constant(&cs, ()).unwrap();
+
+        let shifted_a_var = a_var.rotate_right_shift_7(&table_var);
+        let expected_var = U32Var::new_constant(&cs, shifted_a).unwrap();
+        shifted_a_var.equalverify(&expected_var).unwrap();
+
+        let mut values = vec![];
+        let mut res = shifted_a;
+        for _ in 0..8 {
+            values.push(res & 15);
+            res >>= 4;
+        }
+
+        cs.set_program_output(&shifted_a_var).unwrap();
+
+        test_program(
+            cs,
+            script! {
+                { values }
+            },
+        )
+        .unwrap();
     }
 }

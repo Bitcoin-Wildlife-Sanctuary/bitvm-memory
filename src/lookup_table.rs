@@ -47,10 +47,10 @@ impl AllocVar for LookupTableVar {
         data: <Self as BVar>::Value,
         mode: AllocationMode,
     ) -> Result<Self> {
-        let xor_table_var = XorTableVar::new_variable(cs, data, mode)?;
-        let row_table = RowTable::new_variable(cs, data, mode)?;
         let shr3table_var = Shr3TableVar::new_variable(cs, data, mode)?;
         let shl1table_var = Shl1TableVar::new_variable(cs, data, mode)?;
+        let xor_table_var = XorTableVar::new_variable(cs, data, mode)?;
+        let row_table = RowTable::new_variable(cs, data, mode)?;
 
         Ok(Self {
             xor_table_var,
@@ -315,5 +315,21 @@ impl AllocVar for Shl1TableVar {
 
     fn new_hint(_: &ConstraintSystemRef, _: <Self as BVar>::Value) -> Result<Self> {
         unimplemented!()
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::lookup_table::LookupTableVar;
+    use bitcoin_circle_stark::treepp::*;
+    use bitcoin_script_dsl::bvar::AllocVar;
+    use bitcoin_script_dsl::constraint_system::ConstraintSystem;
+    use bitcoin_script_dsl::test_program;
+
+    #[test]
+    fn test_table() {
+        let cs = ConstraintSystem::new_ref();
+        let _ = LookupTableVar::new_constant(&cs, ()).unwrap();
+        test_program(cs, script! {}).unwrap();
     }
 }

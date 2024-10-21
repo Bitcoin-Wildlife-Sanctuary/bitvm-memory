@@ -4,7 +4,7 @@ use anyhow::Result;
 use bitcoin_circle_stark::treepp::*;
 use bitcoin_script_dsl::bvar::{AllocVar, AllocationMode, BVar};
 use bitcoin_script_dsl::constraint_system::ConstraintSystemRef;
-use std::ops::Add;
+use std::ops::{Add, BitXor};
 
 #[derive(Debug, Clone)]
 pub struct U32Var {
@@ -105,6 +105,24 @@ impl Add<&U32Var> for &U32Var {
 
         let res_var = U32Var { limbs };
         res_var
+    }
+}
+
+impl BitXor<(&LookupTableVar, &U32Var)> for &U32Var {
+    type Output = U32Var;
+
+    fn bitxor(self, rhs: (&LookupTableVar, &U32Var)) -> Self::Output {
+        let mut limbs = vec![];
+        let table = rhs.0;
+        let rhs = rhs.1;
+
+        for (l, r) in self.limbs.iter().zip(rhs.limbs.iter()) {
+            limbs.push(l ^ (table, r));
+        }
+
+        U32Var {
+            limbs: limbs.try_into().unwrap(),
+        }
     }
 }
 

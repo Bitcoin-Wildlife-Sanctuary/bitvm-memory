@@ -86,11 +86,16 @@ impl AllocVar for XorTableVar {
     }
 
     fn new_constant(cs: &ConstraintSystemRef, _: <Self as BVar>::Value) -> Result<Self> {
-        let mut variables = vec![];
-        for i in 0..16 {
-            for j in 0..16 {
-                variables.push(cs.alloc(Element::Num(i ^ j), AllocationMode::Constant)?);
+        let mut values = vec![];
+        for i in (0..16).rev() {
+            for j in (0..16).rev() {
+                values.push(i ^ j);
             }
+        }
+
+        let mut variables = vec![];
+        for &v in values.iter() {
+            variables.push(cs.alloc(Element::Num(v), AllocationMode::Constant)?);
         }
 
         Ok(Self {
@@ -150,8 +155,69 @@ impl AllocVar for RowTable {
 
     fn new_constant(cs: &ConstraintSystemRef, _: <Self as BVar>::Value) -> Result<Self> {
         let mut variables = vec![];
+        for i in (0..16).rev() {
+            variables.push(cs.alloc(Element::Num(i << 4), AllocationMode::Constant)?);
+        }
+
+        Ok(Self {
+            variables,
+            cs: cs.clone(),
+        })
+    }
+
+    fn new_program_input(_: &ConstraintSystemRef, _: <Self as BVar>::Value) -> Result<Self> {
+        unimplemented!()
+    }
+
+    fn new_function_output(_: &ConstraintSystemRef, _: <Self as BVar>::Value) -> Result<Self> {
+        unimplemented!()
+    }
+
+    fn new_hint(_: &ConstraintSystemRef, _: <Self as BVar>::Value) -> Result<Self> {
+        unimplemented!()
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct Shift7TableVar {
+    pub variables: Vec<usize>,
+    pub cs: ConstraintSystemRef,
+}
+
+impl BVar for Shift7TableVar {
+    type Value = ();
+
+    fn cs(&self) -> ConstraintSystemRef {
+        self.cs.clone()
+    }
+
+    fn variables(&self) -> Vec<usize> {
+        self.variables.clone()
+    }
+
+    fn length() -> usize {
+        16
+    }
+
+    fn value(&self) -> Result<Self::Value> {
+        Ok(())
+    }
+}
+
+impl AllocVar for Shift7TableVar {
+    fn new_variable(
+        cs: &ConstraintSystemRef,
+        _: <Self as BVar>::Value,
+        mode: AllocationMode,
+    ) -> Result<Self> {
+        assert_eq!(mode, AllocationMode::Constant);
+        Self::new_constant(cs, ())
+    }
+
+    fn new_constant(cs: &ConstraintSystemRef, _: <Self as BVar>::Value) -> Result<Self> {
+        let mut variables = vec![];
         for i in 0..16 {
-            variables.push(cs.alloc(Element::Num(240 - (i << 4)), AllocationMode::Constant)?);
+            variables.push(cs.alloc(Element::Num(i), AllocationMode::Constant)?);
         }
 
         Ok(Self {

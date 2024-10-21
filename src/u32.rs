@@ -107,6 +107,53 @@ impl Add<&U32Var> for &U32Var {
     }
 }
 
+impl U32Var {
+    pub fn rotate_right_shift_16(self) -> Self {
+        let limbs = self.limbs;
+        let new_limbs = [
+            limbs[4].clone(),
+            limbs[5].clone(),
+            limbs[6].clone(),
+            limbs[7].clone(),
+            limbs[0].clone(),
+            limbs[1].clone(),
+            limbs[2].clone(),
+            limbs[3].clone(),
+        ];
+        Self { limbs: new_limbs }
+    }
+
+    pub fn rotate_right_shift_12(self) -> Self {
+        let limbs = self.limbs;
+        let new_limbs = [
+            limbs[3].clone(),
+            limbs[4].clone(),
+            limbs[5].clone(),
+            limbs[6].clone(),
+            limbs[7].clone(),
+            limbs[0].clone(),
+            limbs[1].clone(),
+            limbs[2].clone(),
+        ];
+        Self { limbs: new_limbs }
+    }
+
+    pub fn rotate_right_shift_8(self) -> Self {
+        let limbs = self.limbs;
+        let new_limbs = [
+            limbs[2].clone(),
+            limbs[3].clone(),
+            limbs[4].clone(),
+            limbs[5].clone(),
+            limbs[6].clone(),
+            limbs[7].clone(),
+            limbs[0].clone(),
+            limbs[1].clone(),
+        ];
+        Self { limbs: new_limbs }
+    }
+}
+
 fn u32_u4limbs_add() -> Script {
     script! {
         for _ in 0..7 {

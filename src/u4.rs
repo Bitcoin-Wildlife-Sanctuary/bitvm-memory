@@ -72,8 +72,8 @@ fn u4var_xor(stack: &mut Stack, options: &Options) -> Result<Script> {
     let k_row = stack.get_relative_position(last_row_table_elem as usize)? - 15;
 
     Ok(script! {
-        { k_row + 2 } OP_ADD OP_PICK OP_ADD
-        { k_xor + 1 } OP_ADD OP_PICK
+        { k_row + 1 } OP_ADD OP_PICK OP_ADD
+        { k_xor } OP_ADD OP_PICK
     })
 }
 
@@ -105,10 +105,10 @@ mod test {
 
     #[test]
     fn test_xor() {
+        let mut prng = ChaCha20Rng::seed_from_u64(0);
         for _ in 0..100 {
             let cs = ConstraintSystem::new_ref();
 
-            let mut prng = ChaCha20Rng::seed_from_u64(0);
             let a = prng.gen_range(0..16);
             let b = prng.gen_range(0..16);
 

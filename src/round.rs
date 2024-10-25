@@ -1,6 +1,5 @@
 use crate::g::g;
 use crate::lookup_table::LookupTableVar;
-use crate::reference::g_reference;
 use crate::u32::U32Var;
 
 pub fn round(table: &LookupTableVar, state_ref: &mut [U32Var; 16], msg: &mut [U32Var; 16]) {
@@ -37,30 +36,11 @@ pub fn round(table: &LookupTableVar, state_ref: &mut [U32Var; 16], msg: &mut [U3
     ];
 }
 
-pub fn round_reference(state_ref: &mut [u32; 16], msg: &mut [u32; 16]) {
-    let [ref mut s0, ref mut s1, ref mut s2, ref mut s3, ref mut s4, ref mut s5, ref mut s6, ref mut s7, ref mut s8, ref mut s9, ref mut s10, ref mut s11, ref mut s12, ref mut s13, ref mut s14, ref mut s15] =
-        *state_ref;
-
-    g_reference(s0, s4, s8, s12, msg[0], msg[1]);
-    g_reference(s1, s5, s9, s13, msg[2], msg[3]);
-    g_reference(s2, s6, s10, s14, msg[4], msg[5]);
-    g_reference(s3, s7, s11, s15, msg[6], msg[7]);
-
-    g_reference(s0, s5, s10, s15, msg[8], msg[9]);
-    g_reference(s1, s6, s11, s12, msg[10], msg[11]);
-    g_reference(s2, s7, s8, s13, msg[12], msg[13]);
-    g_reference(s3, s4, s9, s14, msg[14], msg[15]);
-
-    *msg = [
-        msg[2], msg[6], msg[3], msg[10], msg[7], msg[0], msg[4], msg[13], msg[1], msg[11], msg[12],
-        msg[5], msg[9], msg[14], msg[15], msg[8],
-    ];
-}
-
 #[cfg(test)]
 mod test {
     use crate::lookup_table::LookupTableVar;
-    use crate::round::{round, round_reference};
+    use crate::reference::round_reference;
+    use crate::round::round;
     use crate::u32::U32Var;
     use bitcoin_circle_stark::treepp::*;
     use bitcoin_script_dsl::bvar::{AllocVar, BVar};

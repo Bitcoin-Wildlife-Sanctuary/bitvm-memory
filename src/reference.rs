@@ -1,3 +1,4 @@
+use crate::blake3::IV;
 use std::ops::BitXor;
 
 pub(crate) fn g_reference(
@@ -26,4 +27,61 @@ pub(crate) fn g_reference(
     *b_ref = b;
     *c_ref = c;
     *d_ref = d;
+}
+
+pub fn round_reference(state_ref: &mut [u32; 16], msg: &mut [u32; 16]) {
+    let [ref mut s0, ref mut s1, ref mut s2, ref mut s3, ref mut s4, ref mut s5, ref mut s6, ref mut s7, ref mut s8, ref mut s9, ref mut s10, ref mut s11, ref mut s12, ref mut s13, ref mut s14, ref mut s15] =
+        *state_ref;
+
+    g_reference(s0, s4, s8, s12, msg[0], msg[1]);
+    g_reference(s1, s5, s9, s13, msg[2], msg[3]);
+    g_reference(s2, s6, s10, s14, msg[4], msg[5]);
+    g_reference(s3, s7, s11, s15, msg[6], msg[7]);
+
+    g_reference(s0, s5, s10, s15, msg[8], msg[9]);
+    g_reference(s1, s6, s11, s12, msg[10], msg[11]);
+    g_reference(s2, s7, s8, s13, msg[12], msg[13]);
+    g_reference(s3, s4, s9, s14, msg[14], msg[15]);
+
+    *msg = [
+        msg[2], msg[6], msg[3], msg[10], msg[7], msg[0], msg[4], msg[13], msg[1], msg[11], msg[12],
+        msg[5], msg[9], msg[14], msg[15], msg[8],
+    ];
+}
+
+pub fn blake3_reference(msg: &[Vec<u32>]) -> [u32; 8] {
+    let mut chaining_values = IV.clone();
+
+    for (t, msg) in msg.iter().enumerate() {
+        for (i, chunk) in msg.chunks(16).enumerate() {
+            let mut state = [0u32; 16];
+            state[0..8].copy_from_slice(&chaining_values);
+            state[8..12].copy_from_slice(&IV[0..4]);
+            state[12] = t as u32;
+            state[13] = 0;
+            state[14] = (chunk.len() * 4) as u32;
+
+            let mut d = 0;
+            if i == 0 {
+                d ^= 1;
+            }
+            if msg.len() <= (i + 1) * 16 {
+                d ^= 2;
+            }
+            state[15] = d;
+
+            let mut chunk = chunk.to_vec();
+            chunk.resize(16, 0);
+            let mut msg: [u32; 16] = chunk.try_into().unwrap();
+            for _ in 0..7 {
+                round_reference(&mut state, &mut msg);
+            }
+
+            for i in 0..8 {
+                chaining_values[i] = state[i] ^ state[i + 8];
+            }
+        }
+    }
+
+    chaining_values
 }

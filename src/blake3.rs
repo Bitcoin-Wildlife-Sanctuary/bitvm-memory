@@ -80,7 +80,7 @@ impl<T: ToU4LimbVar> AddAssign<(&Blake3ConstantVar, &T)> for Blake3ChannelVar {
             let mut messages_u32 = vec![];
             for i in 0..16 {
                 messages_u32.push(U32Var {
-                    limbs: messages_u4[(i * 4 + 0)..(i * 4 + 8)]
+                    limbs: messages_u4[(i * 8 + 0)..(i * 8 + 8)]
                         .to_vec()
                         .try_into()
                         .unwrap(),
@@ -90,17 +90,17 @@ impl<T: ToU4LimbVar> AddAssign<(&Blake3ConstantVar, &T)> for Blake3ChannelVar {
 
             let mut states_u32 = self.chaining_values.to_vec();
             states_u32.extend_from_slice(&constant.iv[0..4]);
-            states_u32.push(constant.zero_u32.clone());
             states_u32.push(U32Var::new_constant(&cs, self.next_t).unwrap());
+            states_u32.push(constant.zero_u32.clone());
             states_u32.push(U32Var::new_constant(&cs, len as u32).unwrap());
 
             let mut d = 0;
             if !flag {
                 flag = true;
-                d ^= 2 ^ 0;
+                d ^= 1;
             }
             if iter.peek().is_none() {
-                d ^= 2 ^ 1;
+                d ^= 2;
             }
             states_u32.push(U32Var::new_constant(&cs, d).unwrap());
             let mut states_u32: [U32Var; 16] = states_u32.try_into().unwrap();
@@ -149,9 +149,10 @@ impl<T: ToU4LimbVar> ToU4LimbVar for &[T] {
 #[cfg(test)]
 mod test {
     use crate::blake3::{Blake3ChannelVar, Blake3ConstantVar};
+    use crate::reference::blake3_reference;
     use crate::u32::U32Var;
     use bitcoin_circle_stark::treepp::*;
-    use bitcoin_script_dsl::bvar::AllocVar;
+    use bitcoin_script_dsl::bvar::{AllocVar, BVar};
     use bitcoin_script_dsl::constraint_system::ConstraintSystem;
     use bitcoin_script_dsl::test_program;
     use rand::{Rng, SeedableRng};
@@ -177,6 +178,36 @@ mod test {
 
         channel += (&constant, &messages_u32.as_slice());
 
-        test_program(cs, script! {}).unwrap();
+        let mut messages = vec![messages.clone()];
+        let expected = blake3_reference(&mut messages);
+
+        for i in 0..8 {
+            let var = U32Var::new_constant(&cs, expected[i]).unwrap();
+            channel.chaining_values[i].equalverify(&var).unwrap();
+            cs.set_program_output(&channel.chaining_values[i]).unwrap();
+        }
+
+        let mut values = vec![];
+        for i in 0..8 {
+            let mut v = expected[i];
+            for _ in 0..8 {
+                values.push(v & 15);
+                v >>= 4;
+            }
+        }
+
+        test_program(
+            cs,
+            script! {
+                { values }
+            },
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn test_consistency() {
+        let a = blake3_reference(&[vec![0]]);
+        println!("{:x?}", a);
     }
 }

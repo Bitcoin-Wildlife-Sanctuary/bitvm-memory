@@ -1,4 +1,5 @@
 use anyhow::Result;
+use bitcoin_circle_stark::treepp::*;
 use bitcoin_script_dsl::bvar::{AllocVar, AllocationMode, BVar};
 use bitcoin_script_dsl::constraint_system::{ConstraintSystemRef, Element};
 
@@ -8,6 +9,8 @@ pub struct LookupTableVar {
     pub row_table: RowTable,
     pub shr3table_var: Shr3TableVar,
     pub shl1table_var: Shl1TableVar,
+    pub quotient_table_var: QuotientTableVar,
+    pub remainder_table_var: RemainderTableVar,
 }
 
 impl BVar for LookupTableVar {
@@ -19,6 +22,8 @@ impl BVar for LookupTableVar {
             .and(&self.row_table.cs())
             .and(&self.shr3table_var.cs())
             .and(&self.shl1table_var.cs())
+            .and(&self.quotient_table_var.cs())
+            .and(&self.remainder_table_var.cs())
     }
 
     fn variables(&self) -> Vec<usize> {
@@ -28,12 +33,19 @@ impl BVar for LookupTableVar {
             .chain(self.row_table.variables.iter())
             .chain(self.shr3table_var.variables.iter())
             .chain(self.shl1table_var.variables.iter())
+            .chain(self.quotient_table_var.variables.iter())
+            .chain(self.remainder_table_var.variables.iter())
             .copied()
             .collect()
     }
 
     fn length() -> usize {
-        256 + 16 + 16 + 16
+        XorTableVar::length()
+            + RowTable::length()
+            + Shr3TableVar::length()
+            + Shl1TableVar::length()
+            + QuotientTableVar::length()
+            + RemainderTableVar::length()
     }
 
     fn value(&self) -> Result<Self::Value> {
@@ -51,12 +63,16 @@ impl AllocVar for LookupTableVar {
         let shl1table_var = Shl1TableVar::new_variable(cs, data, mode)?;
         let xor_table_var = XorTableVar::new_variable(cs, data, mode)?;
         let row_table = RowTable::new_variable(cs, data, mode)?;
+        let quotient_table_var = QuotientTableVar::new_variable(cs, data, mode)?;
+        let remainder_table_var = RemainderTableVar::new_variable(cs, data, mode)?;
 
         Ok(Self {
             xor_table_var,
             row_table,
             shr3table_var,
             shl1table_var,
+            quotient_table_var,
+            remainder_table_var,
         })
     }
 }
@@ -297,6 +313,161 @@ impl AllocVar for Shl1TableVar {
                 Element::Num(((i as u32) << 1) as i32 & 15),
                 AllocationMode::Constant,
             )?);
+        }
+
+        Ok(Self {
+            variables,
+            cs: cs.clone(),
+        })
+    }
+
+    fn new_program_input(_: &ConstraintSystemRef, _: <Self as BVar>::Value) -> Result<Self> {
+        unimplemented!()
+    }
+
+    fn new_function_output(_: &ConstraintSystemRef, _: <Self as BVar>::Value) -> Result<Self> {
+        unimplemented!()
+    }
+
+    fn new_hint(_: &ConstraintSystemRef, _: <Self as BVar>::Value) -> Result<Self> {
+        unimplemented!()
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct QuotientTableVar {
+    pub variables: Vec<usize>,
+    pub cs: ConstraintSystemRef,
+}
+
+impl BVar for QuotientTableVar {
+    type Value = ();
+
+    fn cs(&self) -> ConstraintSystemRef {
+        self.cs.clone()
+    }
+
+    fn variables(&self) -> Vec<usize> {
+        self.variables.clone()
+    }
+
+    fn length() -> usize {
+        48
+    }
+
+    fn value(&self) -> Result<Self::Value> {
+        Ok(())
+    }
+}
+
+impl AllocVar for QuotientTableVar {
+    fn new_variable(
+        cs: &ConstraintSystemRef,
+        _: <Self as BVar>::Value,
+        mode: AllocationMode,
+    ) -> Result<Self> {
+        assert_eq!(mode, AllocationMode::Constant);
+        Self::new_constant(cs, ())
+    }
+
+    fn new_constant(cs: &ConstraintSystemRef, _: <Self as BVar>::Value) -> Result<Self> {
+        let mut variables = vec![];
+        cs.insert_script(create_quotient_table, [])?;
+        for i in (0..48).rev() {
+            variables.push(cs.alloc(Element::Num(i / 16), AllocationMode::FunctionOutput)?);
+        }
+
+        Ok(Self {
+            variables,
+            cs: cs.clone(),
+        })
+    }
+
+    fn new_program_input(_: &ConstraintSystemRef, _: <Self as BVar>::Value) -> Result<Self> {
+        unimplemented!()
+    }
+
+    fn new_function_output(_: &ConstraintSystemRef, _: <Self as BVar>::Value) -> Result<Self> {
+        unimplemented!()
+    }
+
+    fn new_hint(_: &ConstraintSystemRef, _: <Self as BVar>::Value) -> Result<Self> {
+        unimplemented!()
+    }
+}
+
+fn create_quotient_table() -> Script {
+    script! {
+        // 47 - 32 == 2, 16 numbers
+        // 31 - 16 == 1, 16 numbers
+        // 15 - 0 == 0, 16 numbers
+
+        OP_PUSHNUM_2
+        OP_DUP
+        OP_2DUP
+        OP_3DUP
+        OP_3DUP
+        OP_3DUP
+        OP_3DUP
+
+        OP_PUSHNUM_1
+        OP_DUP
+        OP_2DUP
+        OP_3DUP
+        OP_3DUP
+        OP_3DUP
+        OP_3DUP
+
+        OP_PUSHBYTES_0
+        OP_DUP
+        OP_2DUP
+        OP_3DUP
+        OP_3DUP
+        OP_3DUP
+        OP_3DUP
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct RemainderTableVar {
+    pub variables: Vec<usize>,
+    pub cs: ConstraintSystemRef,
+}
+
+impl BVar for RemainderTableVar {
+    type Value = ();
+
+    fn cs(&self) -> ConstraintSystemRef {
+        self.cs.clone()
+    }
+
+    fn variables(&self) -> Vec<usize> {
+        self.variables.clone()
+    }
+
+    fn length() -> usize {
+        48
+    }
+
+    fn value(&self) -> Result<Self::Value> {
+        Ok(())
+    }
+}
+
+impl AllocVar for RemainderTableVar {
+    fn new_variable(
+        cs: &ConstraintSystemRef,
+        _: <Self as BVar>::Value,
+        mode: AllocationMode,
+    ) -> Result<Self> {
+        assert_eq!(mode, AllocationMode::Constant);
+        Self::new_constant(cs, ())
+    }
+
+    fn new_constant(cs: &ConstraintSystemRef, _: <Self as BVar>::Value) -> Result<Self> {
+        let mut variables = vec![];
+        for i in (0..48).rev() {
+            variables.push(cs.alloc(Element::Num(i % 16), AllocationMode::Constant)?);
         }
 
         Ok(Self {

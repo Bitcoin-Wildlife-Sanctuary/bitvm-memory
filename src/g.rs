@@ -15,13 +15,13 @@ pub fn g(
     let mut c = c_ref.clone();
     let mut d = d_ref.clone();
 
-    a = &(&a + &b) + &m_0;
+    a = &a + (table, &b, m_0);
     d = (&d ^ (table, &a)).rotate_right_shift_16();
-    c = &c + &d;
+    c = &c + (table, &d);
     b = (&b ^ (table, &c)).rotate_right_shift_12();
-    a = &(&a + &b) + &m_1;
+    a = &a + (table, &b, m_1);
     d = (&d ^ (table, &a)).rotate_right_shift_8();
-    c = &c + &d;
+    c = &c + (table, &d);
     b = (&b ^ (table, &c)).rotate_right_shift_7(table);
 
     *a_ref = a;

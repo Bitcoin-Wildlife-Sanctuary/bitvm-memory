@@ -1,7 +1,6 @@
 use crate::lookup_table::LookupTableVar;
-use crate::u4::U4Var;
+use crate::u4::{NoCarry, U4Var};
 use anyhow::Result;
-use bitcoin_circle_stark::treepp::*;
 use bitcoin_script_dsl::bvar::{AllocVar, AllocationMode, BVar};
 use bitcoin_script_dsl::constraint_system::ConstraintSystemRef;
 use std::ops::{Add, BitXor};
@@ -71,39 +70,90 @@ impl AllocVar for U32Var {
     }
 }
 
-impl Add<&U32Var> for &U32Var {
+impl Add<(&LookupTableVar, &U32Var)> for &U32Var {
     type Output = U32Var;
 
-    fn add(self, rhs: &U32Var) -> Self::Output {
-        let cs = self.cs().and(&rhs.cs());
-        let mut res = self.value().unwrap().wrapping_add(rhs.value().unwrap());
+    fn add(self, rhs: (&LookupTableVar, &U32Var)) -> Self::Output {
+        let table = rhs.0;
+        let rhs = rhs.1;
 
-        let mut values = vec![];
-        for _ in 0..8 {
-            values.push(res & 15);
-            res >>= 4;
-        }
+        let mut limbs = vec![];
 
-        let mut variables = vec![];
-        for (&left, &right) in self.variables().iter().zip(rhs.variables().iter()).rev() {
-            variables.push(left);
-            variables.push(right);
-        }
-        cs.insert_script(u32_u4limbs_add, variables).unwrap();
+        let (limb, carry) = &self.limbs[0] + (table, &rhs.limbs[0]);
+        limbs.push(limb);
 
-        let mut limbs = [
-            U4Var::new_function_output(&cs, values[7]).unwrap(),
-            U4Var::new_function_output(&cs, values[6]).unwrap(),
-            U4Var::new_function_output(&cs, values[5]).unwrap(),
-            U4Var::new_function_output(&cs, values[4]).unwrap(),
-            U4Var::new_function_output(&cs, values[3]).unwrap(),
-            U4Var::new_function_output(&cs, values[2]).unwrap(),
-            U4Var::new_function_output(&cs, values[1]).unwrap(),
-            U4Var::new_function_output(&cs, values[0]).unwrap(),
-        ];
-        limbs.reverse();
+        let (limb, carry) = &self.limbs[1] + (table, &rhs.limbs[1], &carry);
+        limbs.push(limb);
 
-        let res_var = U32Var { limbs };
+        let (limb, carry) = &self.limbs[2] + (table, &rhs.limbs[2], &carry);
+        limbs.push(limb);
+
+        let (limb, carry) = &self.limbs[3] + (table, &rhs.limbs[3], &carry);
+        limbs.push(limb);
+
+        let (limb, carry) = &self.limbs[4] + (table, &rhs.limbs[4], &carry);
+        limbs.push(limb);
+
+        let (limb, carry) = &self.limbs[5] + (table, &rhs.limbs[5], &carry);
+        limbs.push(limb);
+
+        let (limb, carry) = &self.limbs[6] + (table, &rhs.limbs[6], &carry);
+        limbs.push(limb);
+
+        let limb = &self.limbs[7] + (table, &rhs.limbs[7], &carry, NoCarry::default());
+        limbs.push(limb);
+
+        let res_var = U32Var {
+            limbs: limbs.try_into().unwrap(),
+        };
+        res_var
+    }
+}
+
+impl Add<(&LookupTableVar, &U32Var, &U32Var)> for &U32Var {
+    type Output = U32Var;
+
+    fn add(self, rhs: (&LookupTableVar, &U32Var, &U32Var)) -> Self::Output {
+        let table = rhs.0;
+        let rhs_1 = rhs.1;
+        let rhs_2 = rhs.2;
+
+        let mut limbs = vec![];
+
+        let (limb, carry) = &self.limbs[0] + (table, &rhs_1.limbs[0], &rhs_2.limbs[0]);
+        limbs.push(limb);
+
+        let (limb, carry) = &self.limbs[1] + (table, &rhs_1.limbs[1], &rhs_2.limbs[1], &carry);
+        limbs.push(limb);
+
+        let (limb, carry) = &self.limbs[2] + (table, &rhs_1.limbs[2], &rhs_2.limbs[2], &carry);
+        limbs.push(limb);
+
+        let (limb, carry) = &self.limbs[3] + (table, &rhs_1.limbs[3], &rhs_2.limbs[3], &carry);
+        limbs.push(limb);
+
+        let (limb, carry) = &self.limbs[4] + (table, &rhs_1.limbs[4], &rhs_2.limbs[4], &carry);
+        limbs.push(limb);
+
+        let (limb, carry) = &self.limbs[5] + (table, &rhs_1.limbs[5], &rhs_2.limbs[5], &carry);
+        limbs.push(limb);
+
+        let (limb, carry) = &self.limbs[6] + (table, &rhs_1.limbs[6], &rhs_2.limbs[6], &carry);
+        limbs.push(limb);
+
+        let limb = &self.limbs[7]
+            + (
+                table,
+                &rhs_1.limbs[7],
+                &rhs_2.limbs[7],
+                &carry,
+                NoCarry::default(),
+            );
+        limbs.push(limb);
+
+        let res_var = U32Var {
+            limbs: limbs.try_into().unwrap(),
+        };
         res_var
     }
 }
@@ -184,34 +234,6 @@ impl U32Var {
     }
 }
 
-fn u32_u4limbs_add() -> Script {
-    script! {
-        for _ in 0..7 {
-            OP_ADD
-            OP_DUP 16 OP_GREATERTHANOREQUAL
-            OP_IF
-                16 OP_SUB
-                1
-            OP_ELSE
-                0
-            OP_ENDIF
-            OP_SWAP OP_TOALTSTACK
-            OP_ADD
-        }
-
-        OP_ADD
-        OP_DUP 16 OP_GREATERTHANOREQUAL
-        OP_IF 16 OP_SUB OP_ENDIF
-        OP_FROMALTSTACK
-        OP_FROMALTSTACK
-        OP_FROMALTSTACK
-        OP_FROMALTSTACK
-        OP_FROMALTSTACK
-        OP_FROMALTSTACK
-        OP_FROMALTSTACK
-    }
-}
-
 #[cfg(test)]
 mod test {
     use crate::lookup_table::LookupTableVar;
@@ -224,7 +246,7 @@ mod test {
     use rand_chacha::ChaCha20Rng;
 
     #[test]
-    fn test_u32_u4limbs_add() {
+    fn test_u32_add() {
         let mut prng = ChaCha20Rng::seed_from_u64(0);
 
         for _ in 0..100 {
@@ -236,7 +258,9 @@ mod test {
             let a_var = U32Var::new_program_input(&cs, a).unwrap();
             let b_var = U32Var::new_program_input(&cs, b).unwrap();
 
-            let res_var = &a_var + &b_var;
+            let table_var = LookupTableVar::new_constant(&cs, ()).unwrap();
+
+            let res_var = &a_var + (&table_var, &b_var);
             let expected_var = U32Var::new_constant(&cs, a.wrapping_add(b)).unwrap();
 
             res_var.equalverify(&expected_var).unwrap();

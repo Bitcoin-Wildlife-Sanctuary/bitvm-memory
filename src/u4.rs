@@ -6,7 +6,7 @@ use bitcoin_script_dsl::bvar::{AllocVar, AllocationMode, BVar};
 use bitcoin_script_dsl::constraint_system::{ConstraintSystemRef, Element};
 use bitcoin_script_dsl::options::Options;
 use bitcoin_script_dsl::stack::Stack;
-use std::ops::BitXor;
+use std::ops::{Add, BitXor};
 
 #[derive(Debug, Clone)]
 pub struct U4Var {
@@ -91,6 +91,287 @@ impl AllocVar for U4Var {
             cs: cs.clone(),
         })
     }
+}
+
+pub struct CarryVar(U4Var);
+
+#[derive(Default, Copy, Clone)]
+pub struct NoCarry();
+
+impl Add<(&LookupTableVar, &U4Var)> for &U4Var {
+    type Output = (U4Var, CarryVar);
+
+    fn add(self, rhs: (&LookupTableVar, &U4Var)) -> Self::Output {
+        let table = rhs.0;
+        let rhs = rhs.1;
+        let cs = self.cs().and(&rhs.cs()).and(&table.cs());
+
+        let quotient = (self.value + rhs.value) / 16;
+        let remainder = (self.value + rhs.value) % 16;
+
+        cs.insert_script_complex(
+            u4_add_and_reduce,
+            [self.variable, rhs.variable],
+            &Options::new()
+                .with_u32(
+                    "quotient_table_ref",
+                    table.quotient_table_var.variables[0] as u32,
+                )
+                .with_u32(
+                    "remainder_table_ref",
+                    table.remainder_table_var.variables[0] as u32,
+                )
+                .with_u32("num_additions", 1),
+        )
+        .unwrap();
+
+        let remainder_var = U4Var::new_function_output(&cs, remainder).unwrap();
+        let quotient_var = CarryVar(U4Var::new_function_output(&cs, quotient).unwrap());
+
+        (remainder_var, quotient_var)
+    }
+}
+
+impl Add<(&LookupTableVar, &U4Var, NoCarry)> for &U4Var {
+    type Output = U4Var;
+
+    fn add(self, rhs: (&LookupTableVar, &U4Var, NoCarry)) -> Self::Output {
+        let table = rhs.0;
+        let rhs = rhs.1;
+        let cs = self.cs().and(&rhs.cs()).and(&table.cs());
+        let remainder = (self.value + rhs.value) % 16;
+
+        cs.insert_script_complex(
+            u4_add_and_reduce_nocarry,
+            [self.variable, rhs.variable],
+            &Options::new()
+                .with_u32(
+                    "remainder_table_ref",
+                    table.remainder_table_var.variables[0] as u32,
+                )
+                .with_u32("num_additions", 1),
+        )
+        .unwrap();
+
+        let remainder_var = U4Var::new_function_output(&cs, remainder).unwrap();
+        remainder_var
+    }
+}
+
+impl Add<(&LookupTableVar, &U4Var, &CarryVar)> for &U4Var {
+    type Output = (U4Var, CarryVar);
+
+    fn add(self, rhs: (&LookupTableVar, &U4Var, &CarryVar)) -> Self::Output {
+        let table = rhs.0;
+        let carry = rhs.2;
+        let rhs = rhs.1;
+        let cs = self.cs().and(&rhs.cs()).and(&table.cs()).and(&carry.0.cs());
+
+        let quotient = (self.value + rhs.value + carry.0.value) / 16;
+        let remainder = (self.value + rhs.value + carry.0.value) % 16;
+
+        cs.insert_script_complex(
+            u4_add_and_reduce,
+            [self.variable, rhs.variable, carry.0.variable],
+            &Options::new()
+                .with_u32(
+                    "quotient_table_ref",
+                    table.quotient_table_var.variables[0] as u32,
+                )
+                .with_u32(
+                    "remainder_table_ref",
+                    table.remainder_table_var.variables[0] as u32,
+                )
+                .with_u32("num_additions", 2),
+        )
+        .unwrap();
+
+        let remainder_var = U4Var::new_function_output(&cs, remainder).unwrap();
+        let quotient_var = CarryVar(U4Var::new_function_output(&cs, quotient).unwrap());
+
+        (remainder_var, quotient_var)
+    }
+}
+
+impl Add<(&LookupTableVar, &U4Var, &CarryVar, NoCarry)> for &U4Var {
+    type Output = U4Var;
+
+    fn add(self, rhs: (&LookupTableVar, &U4Var, &CarryVar, NoCarry)) -> Self::Output {
+        let table = rhs.0;
+        let carry = rhs.2;
+        let rhs = rhs.1;
+        let cs = self.cs().and(&rhs.cs()).and(&table.cs()).and(&carry.0.cs());
+
+        let remainder = (self.value + rhs.value + carry.0.value) % 16;
+
+        cs.insert_script_complex(
+            u4_add_and_reduce_nocarry,
+            [self.variable, rhs.variable, carry.0.variable],
+            &Options::new()
+                .with_u32(
+                    "remainder_table_ref",
+                    table.remainder_table_var.variables[0] as u32,
+                )
+                .with_u32("num_additions", 2),
+        )
+        .unwrap();
+
+        let remainder_var = U4Var::new_function_output(&cs, remainder).unwrap();
+
+        remainder_var
+    }
+}
+
+impl Add<(&LookupTableVar, &U4Var, &U4Var)> for &U4Var {
+    type Output = (U4Var, CarryVar);
+
+    fn add(self, rhs: (&LookupTableVar, &U4Var, &U4Var)) -> Self::Output {
+        let table = rhs.0;
+        let rhs_1 = rhs.1;
+        let rhs_2 = rhs.2;
+        let cs = self.cs().and(&rhs_1.cs()).and(&rhs_2.cs()).and(&table.cs());
+
+        let quotient = (self.value + rhs_1.value + rhs_2.value) / 16;
+        let remainder = (self.value + rhs_1.value + rhs_2.value) % 16;
+
+        cs.insert_script_complex(
+            u4_add_and_reduce,
+            [self.variable, rhs_1.variable, rhs_2.variable],
+            &Options::new()
+                .with_u32(
+                    "quotient_table_ref",
+                    table.quotient_table_var.variables[0] as u32,
+                )
+                .with_u32(
+                    "remainder_table_ref",
+                    table.remainder_table_var.variables[0] as u32,
+                )
+                .with_u32("num_additions", 2),
+        )
+        .unwrap();
+
+        let remainder_var = U4Var::new_function_output(&cs, remainder).unwrap();
+        let quotient_var = CarryVar(U4Var::new_function_output(&cs, quotient).unwrap());
+
+        (remainder_var, quotient_var)
+    }
+}
+
+impl Add<(&LookupTableVar, &U4Var, &U4Var, &CarryVar)> for &U4Var {
+    type Output = (U4Var, CarryVar);
+
+    fn add(self, rhs: (&LookupTableVar, &U4Var, &U4Var, &CarryVar)) -> Self::Output {
+        let table = rhs.0;
+        let carry = rhs.3;
+        let rhs_1 = rhs.1;
+        let rhs_2 = rhs.2;
+        let cs = self
+            .cs()
+            .and(&rhs_1.cs())
+            .and(&rhs_2.cs())
+            .and(&table.cs())
+            .and(&carry.0.cs());
+
+        let quotient = (self.value + rhs_1.value + rhs_2.value + carry.0.value) / 16;
+        let remainder = (self.value + rhs_1.value + rhs_2.value + carry.0.value) % 16;
+
+        cs.insert_script_complex(
+            u4_add_and_reduce,
+            [
+                self.variable,
+                rhs_1.variable,
+                rhs_2.variable,
+                carry.0.variable,
+            ],
+            &Options::new()
+                .with_u32(
+                    "quotient_table_ref",
+                    table.quotient_table_var.variables[0] as u32,
+                )
+                .with_u32(
+                    "remainder_table_ref",
+                    table.remainder_table_var.variables[0] as u32,
+                )
+                .with_u32("num_additions", 3),
+        )
+        .unwrap();
+
+        let remainder_var = U4Var::new_function_output(&cs, remainder).unwrap();
+        let quotient_var = CarryVar(U4Var::new_function_output(&cs, quotient).unwrap());
+
+        (remainder_var, quotient_var)
+    }
+}
+
+impl Add<(&LookupTableVar, &U4Var, &U4Var, &CarryVar, NoCarry)> for &U4Var {
+    type Output = U4Var;
+
+    fn add(self, rhs: (&LookupTableVar, &U4Var, &U4Var, &CarryVar, NoCarry)) -> Self::Output {
+        let table = rhs.0;
+        let carry = rhs.3;
+        let rhs_1 = rhs.1;
+        let rhs_2 = rhs.2;
+        let cs = self
+            .cs()
+            .and(&rhs_1.cs())
+            .and(&rhs_2.cs())
+            .and(&table.cs())
+            .and(&carry.0.cs());
+
+        let remainder = (self.value + rhs_1.value + rhs_2.value + carry.0.value) % 16;
+
+        cs.insert_script_complex(
+            u4_add_and_reduce_nocarry,
+            [
+                self.variable,
+                rhs_1.variable,
+                rhs_2.variable,
+                carry.0.variable,
+            ],
+            &Options::new()
+                .with_u32(
+                    "remainder_table_ref",
+                    table.remainder_table_var.variables[0] as u32,
+                )
+                .with_u32("num_additions", 3),
+        )
+        .unwrap();
+
+        let remainder_var = U4Var::new_function_output(&cs, remainder).unwrap();
+
+        remainder_var
+    }
+}
+
+fn u4_add_and_reduce(stack: &mut Stack, options: &Options) -> Result<Script> {
+    let last_quotient_table_elem = options.get_u32("quotient_table_ref")?;
+    let k_quotient = stack.get_relative_position(last_quotient_table_elem as usize)? - 47;
+
+    let last_remainder_table_elem = options.get_u32("remainder_table_ref")?;
+    let k_remainder = stack.get_relative_position(last_remainder_table_elem as usize)? - 47;
+
+    let num_additions = options.get_u32("num_additions")? as usize;
+    Ok(script! {
+        for _ in 0..num_additions {
+            OP_ADD
+        }
+        OP_DUP
+        { k_remainder + 1 } OP_ADD OP_PICK
+        OP_SWAP
+        { k_quotient + 1 } OP_ADD OP_PICK
+    })
+}
+
+fn u4_add_and_reduce_nocarry(stack: &mut Stack, options: &Options) -> Result<Script> {
+    let last_remainder_table_elem = options.get_u32("remainder_table_ref")?;
+    let k_remainder = stack.get_relative_position(last_remainder_table_elem as usize)? - 47;
+    let num_additions = options.get_u32("num_additions")? as usize;
+    Ok(script! {
+        for _ in 0..num_additions {
+            OP_ADD
+        }
+        { k_remainder } OP_ADD OP_PICK
+    })
 }
 
 impl U4Var {

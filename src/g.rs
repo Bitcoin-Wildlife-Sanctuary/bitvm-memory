@@ -34,6 +34,7 @@ pub fn g(
 mod test {
     use crate::g::g;
     use crate::lookup_table::LookupTableVar;
+    use crate::reference::g_reference;
     use crate::u32::U32Var;
     use bitcoin_circle_stark::treepp::*;
     use bitcoin_script_dsl::bvar::{AllocVar, BVar};
@@ -41,41 +42,12 @@ mod test {
     use bitcoin_script_dsl::test_program;
     use rand::{Rng, SeedableRng};
     use rand_chacha::ChaCha20Rng;
-    use std::ops::BitXor;
-
-    fn g_reference(
-        a_ref: &mut u32,
-        b_ref: &mut u32,
-        c_ref: &mut u32,
-        d_ref: &mut u32,
-        m_0: u32,
-        m_1: u32,
-    ) {
-        let mut a = a_ref.clone();
-        let mut b = b_ref.clone();
-        let mut c = c_ref.clone();
-        let mut d = d_ref.clone();
-
-        a = a.wrapping_add(b).wrapping_add(m_0);
-        d = d.bitxor(&a).rotate_right(16);
-        c = c.wrapping_add(d);
-        b = b.bitxor(&c).rotate_right(12);
-        a = a.wrapping_add(b).wrapping_add(m_1);
-        d = d.bitxor(&a).rotate_right(8);
-        c = c.wrapping_add(d);
-        b = b.bitxor(&c).rotate_right(7);
-
-        *a_ref = a;
-        *b_ref = b;
-        *c_ref = c;
-        *d_ref = d;
-    }
 
     #[test]
     fn test_g() {
         let mut prng = ChaCha20Rng::seed_from_u64(0);
 
-        for _ in 0..1 {
+        for _ in 0..100 {
             let mut a = prng.gen();
             let mut b = prng.gen();
             let mut c = prng.gen();

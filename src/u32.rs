@@ -7,7 +7,7 @@ use std::ops::{Add, BitXor};
 
 #[derive(Debug, Clone)]
 pub struct U32Var {
-    limbs: [U4Var; 8],
+    pub limbs: [U4Var; 8],
 }
 
 impl BVar for U32Var {

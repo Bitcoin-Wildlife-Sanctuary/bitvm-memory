@@ -1,4 +1,4 @@
-use crate::blake3::IV;
+use crate::blake3ic::IV;
 use std::ops::BitXor;
 
 pub(crate) fn g_reference(
@@ -49,37 +49,36 @@ pub fn round_reference(state_ref: &mut [u32; 16], msg: &mut [u32; 16]) {
     ];
 }
 
-pub fn blake3_reference(msg: &[Vec<u32>]) -> [u32; 8] {
+pub fn blake3ic_reference(msg: &[u32]) -> [u32; 8] {
     let mut chaining_values = IV.clone();
 
-    for (t, msg) in msg.iter().enumerate() {
-        for (i, chunk) in msg.chunks(16).enumerate() {
-            let mut state = [0u32; 16];
-            state[0..8].copy_from_slice(&chaining_values);
-            state[8..12].copy_from_slice(&IV[0..4]);
-            state[12] = t as u32;
-            state[13] = 0;
-            state[14] = (chunk.len() * 4) as u32;
+    for (i, chunk) in msg.chunks(16).enumerate() {
+        let mut state = [0u32; 16];
+        state[0..8].copy_from_slice(&chaining_values);
+        state[8..12].copy_from_slice(&IV[0..4]);
+        state[12] = 0;
+        state[13] = 0;
+        state[14] = (chunk.len() * 4) as u32;
 
-            let mut d = 0;
-            if i == 0 {
-                d ^= 1;
-            }
-            if msg.len() <= (i + 1) * 16 {
-                d ^= 2;
-            }
-            state[15] = d;
+        let mut d = 0;
+        if i == 0 {
+            d ^= 1;
+        }
+        if i == (msg.len() + 15) / 16 - 1 {
+            d ^= 2;
+            d ^= 8;
+        }
+        state[15] = d;
 
-            let mut chunk = chunk.to_vec();
-            chunk.resize(16, 0);
-            let mut msg: [u32; 16] = chunk.try_into().unwrap();
-            for _ in 0..7 {
-                round_reference(&mut state, &mut msg);
-            }
+        let mut chunk = chunk.to_vec();
+        chunk.resize(16, 0);
+        let mut msg: [u32; 16] = chunk.try_into().unwrap();
+        for _ in 0..7 {
+            round_reference(&mut state, &mut msg);
+        }
 
-            for i in 0..8 {
-                chaining_values[i] = state[i] ^ state[i + 8];
-            }
+        for i in 0..8 {
+            chaining_values[i] = state[i] ^ state[i + 8];
         }
     }
 

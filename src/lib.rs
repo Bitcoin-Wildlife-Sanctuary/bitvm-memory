@@ -1,4 +1,4 @@
-pub mod blake3;
+pub mod blake3ic;
 pub mod g;
 pub mod lookup_table;
 #[cfg(test)]

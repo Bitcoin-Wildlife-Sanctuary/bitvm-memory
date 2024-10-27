@@ -37,25 +37,29 @@ impl Blake3ConstantVar {
     }
 }
 
-pub struct Blake3ChannelVar {
+pub struct Blake3ICChannelVar {
+    pub cs: ConstraintSystemRef,
     pub chaining_values: [U32Var; 8],
-    pub next_t: u32,
+    pub num_block: usize,
+    pub buffer: Vec<U4Var>,
 }
 
-impl Blake3ChannelVar {
-    pub fn new(constant: &Blake3ConstantVar) -> Blake3ChannelVar {
-        Blake3ChannelVar {
+impl Blake3ICChannelVar {
+    pub fn new(constant: &Blake3ConstantVar) -> Blake3ICChannelVar {
+        Blake3ICChannelVar {
+            cs: constant.cs.clone(),
             chaining_values: constant.iv.clone(),
-            next_t: 0,
+            num_block: 0,
+            buffer: vec![],
         }
     }
 }
 
-impl<T: ToU4LimbVar> AddAssign<(&Blake3ConstantVar, &T)> for Blake3ChannelVar {
+impl<T: ToU4LimbVar> AddAssign<(&Blake3ConstantVar, &T)> for Blake3ICChannelVar {
     fn add_assign(&mut self, rhs: (&Blake3ConstantVar, &T)) {
         let constant = rhs.0;
         let rhs = rhs.1;
-        let cs = constant.cs.clone();
+        let cs = self.cs.and(&constant.cs.clone());
 
         let u4_limbs = rhs.to_u4_limbs();
         assert_eq!(
@@ -64,17 +68,13 @@ impl<T: ToU4LimbVar> AddAssign<(&Blake3ConstantVar, &T)> for Blake3ChannelVar {
             "The number of u4 limbs should be even (byte aligned)"
         );
 
-        let mut iter = u4_limbs.into_iter().peekable();
+        let mut buffer = self.buffer.clone();
+        buffer.extend(u4_limbs);
 
-        let mut flag = false;
-        while iter.peek().is_some() {
+        while buffer.len() > 512 / 4 {
             let mut messages_u4 = vec![];
-            while messages_u4.len() < 512 / 4 && iter.peek().is_some() {
-                messages_u4.push(iter.next().unwrap());
-            }
-            let len = messages_u4.len() / 2;
-            while messages_u4.len() < 512 / 4 {
-                messages_u4.push(constant.zero_u32.limbs[0].clone());
+            for _ in 0..512 / 4 {
+                messages_u4.push(buffer.remove(0));
             }
 
             let mut messages_u32 = vec![];
@@ -90,21 +90,17 @@ impl<T: ToU4LimbVar> AddAssign<(&Blake3ConstantVar, &T)> for Blake3ChannelVar {
 
             let mut states_u32 = self.chaining_values.to_vec();
             states_u32.extend_from_slice(&constant.iv[0..4]);
-            states_u32.push(U32Var::new_constant(&cs, self.next_t).unwrap());
             states_u32.push(constant.zero_u32.clone());
-            states_u32.push(U32Var::new_constant(&cs, len as u32).unwrap());
+            states_u32.push(constant.zero_u32.clone());
+            states_u32.push(U32Var::new_constant(&cs, 64).unwrap());
 
             let mut d = 0;
-            if !flag {
-                flag = true;
+            if self.num_block == 0 {
                 d ^= 1;
             }
-            if iter.peek().is_none() {
-                d ^= 2;
-            }
             states_u32.push(U32Var::new_constant(&cs, d).unwrap());
-            let mut states_u32: [U32Var; 16] = states_u32.try_into().unwrap();
 
+            let mut states_u32: [U32Var; 16] = states_u32.try_into().unwrap();
             for _ in 0..7 {
                 round(&constant.table, &mut states_u32, &mut messages_u32);
             }
@@ -113,10 +109,60 @@ impl<T: ToU4LimbVar> AddAssign<(&Blake3ConstantVar, &T)> for Blake3ChannelVar {
             for i in 0..8 {
                 new_chaining_values.push(&states_u32[i] ^ (&constant.table, &states_u32[i + 8]));
             }
+
             self.chaining_values = new_chaining_values.try_into().unwrap();
+            self.num_block += 1;
+        }
+        self.buffer = buffer;
+    }
+}
+
+impl Blake3ICChannelVar {
+    pub fn finalize(self, constant: &Blake3ConstantVar) -> [U32Var; 8] {
+        let cs = constant.cs.clone();
+
+        let mut messages_u4 = self.buffer.clone();
+        let len = messages_u4.len();
+        for _ in len..(512 / 4) {
+            messages_u4.push(constant.zero_u32.limbs[0].clone());
         }
 
-        self.next_t += 1;
+        let mut messages_u32 = vec![];
+        for i in 0..16 {
+            messages_u32.push(U32Var {
+                limbs: messages_u4[(i * 8 + 0)..(i * 8 + 8)]
+                    .to_vec()
+                    .try_into()
+                    .unwrap(),
+            })
+        }
+        let mut messages_u32: [U32Var; 16] = messages_u32.try_into().unwrap();
+
+        let mut states_u32 = self.chaining_values.to_vec();
+        states_u32.extend_from_slice(&constant.iv[0..4]);
+        states_u32.push(constant.zero_u32.clone());
+        states_u32.push(constant.zero_u32.clone());
+        states_u32.push(U32Var::new_constant(&cs, (len / 2) as u32).unwrap());
+
+        let mut d = 0;
+        if self.num_block == 0 {
+            d ^= 1;
+        }
+        d ^= 2;
+        d ^= 8;
+        states_u32.push(U32Var::new_constant(&cs, d).unwrap());
+
+        let mut states_u32: [U32Var; 16] = states_u32.try_into().unwrap();
+        for _ in 0..7 {
+            round(&constant.table, &mut states_u32, &mut messages_u32);
+        }
+
+        let mut new_chaining_values = vec![];
+        for i in 0..8 {
+            new_chaining_values.push(&states_u32[i] ^ (&constant.table, &states_u32[i + 8]));
+        }
+
+        new_chaining_values.try_into().unwrap()
     }
 }
 
@@ -136,20 +182,10 @@ impl ToU4LimbVar for U32Var {
     }
 }
 
-impl<T: ToU4LimbVar> ToU4LimbVar for &[T] {
-    fn to_u4_limbs(&self) -> Vec<U4Var> {
-        let mut res = vec![];
-        for v in self.iter() {
-            res.extend(v.to_u4_limbs());
-        }
-        res
-    }
-}
-
 #[cfg(test)]
 mod test {
-    use crate::blake3::{Blake3ChannelVar, Blake3ConstantVar};
-    use crate::reference::blake3_reference;
+    use crate::blake3ic::{Blake3ConstantVar, Blake3ICChannelVar};
+    use crate::reference::blake3ic_reference;
     use crate::u32::U32Var;
     use bitcoin_circle_stark::treepp::*;
     use bitcoin_script_dsl::bvar::{AllocVar, BVar};
@@ -159,7 +195,7 @@ mod test {
     use rand_chacha::ChaCha20Rng;
 
     #[test]
-    fn test_blake3() {
+    fn test_blake3ic() {
         let mut prng = ChaCha20Rng::seed_from_u64(0);
         let mut messages = Vec::<u32>::with_capacity(16);
         for _ in 0..16 {
@@ -174,17 +210,20 @@ mod test {
         }
 
         let constant = Blake3ConstantVar::new(&cs);
-        let mut channel = Blake3ChannelVar::new(&constant);
+        let mut channel = Blake3ICChannelVar::new(&constant);
 
-        channel += (&constant, &messages_u32.as_slice());
+        for v in messages_u32.iter() {
+            channel += (&constant, v);
+        }
+        let finalized = channel.finalize(&constant);
 
-        let mut messages = vec![messages.clone()];
-        let expected = blake3_reference(&mut messages);
+        let mut messages = messages.clone();
+        let expected = blake3ic_reference(&mut messages);
 
         for i in 0..8 {
             let var = U32Var::new_constant(&cs, expected[i]).unwrap();
-            channel.chaining_values[i].equalverify(&var).unwrap();
-            cs.set_program_output(&channel.chaining_values[i]).unwrap();
+            finalized[i].equalverify(&var).unwrap();
+            cs.set_program_output(&finalized[i]).unwrap();
         }
 
         let mut values = vec![];
@@ -203,11 +242,5 @@ mod test {
             },
         )
         .unwrap();
-    }
-
-    #[test]
-    fn test_consistency() {
-        let a = blake3_reference(&[vec![0]]);
-        println!("{:x?}", a);
     }
 }

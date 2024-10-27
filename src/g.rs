@@ -39,7 +39,7 @@ mod test {
     use bitcoin_circle_stark::treepp::*;
     use bitcoin_script_dsl::bvar::{AllocVar, BVar};
     use bitcoin_script_dsl::constraint_system::ConstraintSystem;
-    use bitcoin_script_dsl::test_program;
+    use bitcoin_script_dsl::test_program_without_opcat;
     use rand::{Rng, SeedableRng};
     use rand_chacha::ChaCha20Rng;
 
@@ -95,7 +95,7 @@ mod test {
                 }
             }
 
-            test_program(
+            test_program_without_opcat(
                 cs,
                 script! {
                     { values }

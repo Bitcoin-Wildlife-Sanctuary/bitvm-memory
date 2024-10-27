@@ -495,12 +495,12 @@ mod test {
     use bitcoin_circle_stark::treepp::*;
     use bitcoin_script_dsl::bvar::AllocVar;
     use bitcoin_script_dsl::constraint_system::ConstraintSystem;
-    use bitcoin_script_dsl::test_program;
+    use bitcoin_script_dsl::test_program_without_opcat;
 
     #[test]
     fn test_table() {
         let cs = ConstraintSystem::new_ref();
         let _ = LookupTableVar::new_constant(&cs, ()).unwrap();
-        test_program(cs, script! {}).unwrap();
+        test_program_without_opcat(cs, script! {}).unwrap();
     }
 }

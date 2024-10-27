@@ -442,7 +442,7 @@ mod test {
     use bitcoin_circle_stark::treepp::*;
     use bitcoin_script_dsl::bvar::AllocVar;
     use bitcoin_script_dsl::constraint_system::ConstraintSystem;
-    use bitcoin_script_dsl::test_program;
+    use bitcoin_script_dsl::test_program_without_opcat;
     use rand::{Rng, SeedableRng};
     use rand_chacha::ChaCha20Rng;
 
@@ -463,7 +463,7 @@ mod test {
             let res_var = &a_var ^ (&lookup_table, &b_var);
             cs.set_program_output(&res_var).unwrap();
 
-            test_program(
+            test_program_without_opcat(
                 cs,
                 script! {
                     { a ^ b }

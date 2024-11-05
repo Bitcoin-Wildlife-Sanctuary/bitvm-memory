@@ -1,5 +1,5 @@
-use crate::lookup_table::LookupTableVar;
-use crate::u32::U32Var;
+use crate::blake3::lookup_table::LookupTableVar;
+use crate::limbs::u32::U32Var;
 
 pub fn g(
     table: &LookupTableVar,
@@ -32,10 +32,10 @@ pub fn g(
 
 #[cfg(test)]
 mod test {
-    use crate::g::g;
-    use crate::lookup_table::LookupTableVar;
-    use crate::reference::g_reference;
-    use crate::u32::U32Var;
+    use crate::blake3::g::g;
+    use crate::blake3::lookup_table::LookupTableVar;
+    use crate::blake3::reference::g_reference;
+    use crate::limbs::u32::U32Var;
     use bitcoin_circle_stark::treepp::*;
     use bitcoin_script_dsl::bvar::{AllocVar, BVar};
     use bitcoin_script_dsl::constraint_system::ConstraintSystem;

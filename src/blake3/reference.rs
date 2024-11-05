@@ -1,4 +1,4 @@
-use crate::blake3ic::IV;
+use crate::blake3::IV;
 use std::ops::BitXor;
 
 pub(crate) fn g_reference(
@@ -49,7 +49,7 @@ pub fn round_reference(state_ref: &mut [u32; 16], msg: &mut [u32; 16]) {
     ];
 }
 
-pub fn blake3ic_reference(msg: &[u32]) -> [u32; 8] {
+pub fn blake3_reference(msg: &[u32]) -> [u32; 8] {
     let mut chaining_values = IV.clone();
 
     for (i, chunk) in msg.chunks(16).enumerate() {

@@ -1,6 +1,6 @@
-use crate::g::g;
-use crate::lookup_table::LookupTableVar;
-use crate::u32::U32Var;
+use crate::blake3::g::g;
+use crate::blake3::lookup_table::LookupTableVar;
+use crate::limbs::u32::U32Var;
 
 pub fn round(table: &LookupTableVar, state_ref: &mut [U32Var; 16], msg: &mut [U32Var; 16]) {
     let [ref mut s0, ref mut s1, ref mut s2, ref mut s3, ref mut s4, ref mut s5, ref mut s6, ref mut s7, ref mut s8, ref mut s9, ref mut s10, ref mut s11, ref mut s12, ref mut s13, ref mut s14, ref mut s15] =
@@ -38,10 +38,10 @@ pub fn round(table: &LookupTableVar, state_ref: &mut [U32Var; 16], msg: &mut [U3
 
 #[cfg(test)]
 mod test {
-    use crate::lookup_table::LookupTableVar;
-    use crate::reference::round_reference;
-    use crate::round::round;
-    use crate::u32::U32Var;
+    use crate::blake3::lookup_table::LookupTableVar;
+    use crate::blake3::reference::round_reference;
+    use crate::blake3::round::round;
+    use crate::limbs::u32::U32Var;
     use bitcoin_circle_stark::treepp::*;
     use bitcoin_script_dsl::bvar::{AllocVar, BVar};
     use bitcoin_script_dsl::constraint_system::ConstraintSystem;

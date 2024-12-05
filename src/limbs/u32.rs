@@ -1,9 +1,10 @@
-use crate::blake3::lookup_table::LookupTableVar;
+use crate::compression::blake3::lookup_table::LookupTableVar;
 use crate::limbs::u4::{NoCarry, U4Var};
 use anyhow::Result;
+use bitcoin_circle_stark::treepp::*;
 use bitcoin_script_dsl::bvar::{AllocVar, AllocationMode, BVar};
-use bitcoin_script_dsl::constraint_system::ConstraintSystemRef;
-use std::ops::{Add, BitXor};
+use bitcoin_script_dsl::constraint_system::{ConstraintSystemRef, Element};
+use std::ops::{Add, BitOrAssign, BitXor};
 
 #[derive(Debug, Clone)]
 pub struct U32Var {
@@ -234,10 +235,213 @@ impl U32Var {
     }
 }
 
+#[derive(Clone)]
+pub struct U32CompactVar {
+    pub variable: usize,
+    pub value: u32,
+    pub cs: ConstraintSystemRef,
+}
+
+impl BVar for U32CompactVar {
+    type Value = u32;
+
+    fn cs(&self) -> ConstraintSystemRef {
+        self.cs.clone()
+    }
+
+    fn variables(&self) -> Vec<usize> {
+        vec![self.variable]
+    }
+
+    fn length() -> usize {
+        1
+    }
+
+    fn value(&self) -> Result<Self::Value> {
+        Ok(self.value)
+    }
+}
+
+impl AllocVar for U32CompactVar {
+    fn new_variable(
+        cs: &ConstraintSystemRef,
+        data: <Self as BVar>::Value,
+        mode: AllocationMode,
+    ) -> Result<Self> {
+        let variable = cs.alloc(Element::Str(get_u32_compact_representation(data)), mode)?;
+        Ok(Self {
+            variable,
+            value: data,
+            cs: cs.clone(),
+        })
+    }
+}
+
+fn get_u32_compact_representation(mut v: u32) -> Vec<u8> {
+    let is_negative = v >= 2147483648u32;
+
+    if v >= 2147483648u32 {
+        v -= 2147483648u32;
+    }
+
+    let mut bytes = Vec::new();
+    while v > 0 {
+        bytes.push((v & 0xff) as u8);
+        v >>= 8;
+    }
+
+    if is_negative == false {
+        if bytes.last().is_some() && bytes.last().unwrap() & 0x80 != 0 {
+            bytes.push(0);
+        }
+    } else {
+        if bytes.last().is_some() && bytes.last().unwrap() & 0x80 != 0 {
+            bytes.push(0x80);
+        } else {
+            if bytes.last().is_some() {
+                bytes.last_mut().unwrap().bitor_assign(&0x80);
+            } else {
+                bytes.push(0x80);
+            }
+        }
+    }
+
+    bytes
+}
+
+impl From<&U32Var> for U32CompactVar {
+    fn from(limbs: &U32Var) -> Self {
+        let cs = limbs.cs();
+        cs.insert_script(from_u32_to_u32compact, limbs.variables().iter().copied())
+            .unwrap();
+        U32CompactVar::new_function_output(&cs, limbs.value().unwrap()).unwrap()
+    }
+}
+
+fn from_u32_to_u32compact() -> Script {
+    script! {
+        // take away the highest bit of the highest 4-bit limb
+        // move the highest bit into the altstack
+        OP_DUP 8 OP_GREATERTHANOREQUAL OP_DUP OP_TOALTSTACK OP_IF
+            8 OP_SUB
+        OP_ENDIF
+
+        // merge the rest into a single stack element
+        OP_16MUL OP_ADD
+        OP_16MUL OP_ADD
+        OP_16MUL OP_ADD
+        OP_16MUL OP_ADD
+        OP_16MUL OP_ADD
+        OP_16MUL OP_ADD
+        OP_16MUL OP_ADD
+
+        // get the highest bit back
+        OP_FROMALTSTACK
+        OP_IF
+            // if the current value is 0, then convert it into neg-0 0x80
+            // otherwise, just negate it
+            OP_DUP OP_NOT OP_IF
+                OP_DROP OP_PUSHBYTES_1 OP_LEFT
+            OP_ELSE
+                OP_NEGATE
+            OP_ENDIF
+        OP_ENDIF
+    }
+}
+
+impl From<&U32CompactVar> for U32Var {
+    fn from(value: &U32CompactVar) -> Self {
+        let mut data = value.value().unwrap();
+        let cs = value.cs();
+
+        let mut limbs = vec![];
+        for _ in 0..8 {
+            limbs.push(data & 15);
+            data >>= 4;
+        }
+
+        cs.insert_script(from_u32compact_to_u32, [value.variable])
+            .unwrap();
+
+        let mut limbs_vars = vec![];
+        for &v in limbs.iter() {
+            limbs_vars.push(U4Var::new_function_output(&cs, v).unwrap());
+        }
+
+        U32Var {
+            limbs: limbs_vars.try_into().unwrap(),
+        }
+    }
+}
+
+fn from_u32compact_to_u32() -> Script {
+    script! {
+        // get the sign and push to altstack
+        // 1 => negative
+        // 0 => non-negative
+        OP_DUP OP_PUSHBYTES_1 OP_LEFT OP_EQUAL OP_IF
+            OP_DROP OP_PUSHBYTES_0
+            1 OP_TOALTSTACK
+        OP_ELSE
+            OP_DUP OP_ABS OP_DUP OP_ROT OP_EQUAL OP_NOT OP_TOALTSTACK
+        OP_ENDIF
+
+        { remove_bit_to_altstack(30) }
+        { remove_bit_to_altstack(29) }
+        { remove_bit_to_altstack(28) }
+        convert_4bits_from_altstack
+        OP_TOALTSTACK
+
+        for i in (0..=6).rev() {
+            { remove_bit_to_altstack(i * 4 + 3) }
+            { remove_bit_to_altstack(i * 4 + 2) }
+            { remove_bit_to_altstack(i * 4 + 1) }
+            { remove_bit_to_altstack(i * 4) }
+            convert_4bits_from_altstack
+            OP_TOALTSTACK
+        }
+        OP_DROP
+
+        for _ in 0..8 {
+            OP_FROMALTSTACK
+        }
+    }
+}
+
+fn remove_bit_to_altstack(i: usize) -> Script {
+    script! {
+        OP_DUP { 1i64 << i } OP_GREATERTHANOREQUAL OP_DUP OP_TOALTSTACK OP_IF
+         { 1i64 << i } OP_SUB
+        OP_ENDIF
+    }
+}
+
+fn convert_4bits_from_altstack() -> Script {
+    script! {
+        OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK
+        OP_DUP OP_ADD
+        OP_ADD
+        OP_DUP OP_ADD
+        OP_ADD
+        OP_DUP OP_ADD
+        OP_ADD
+    }
+}
+
+#[allow(non_snake_case)]
+fn OP_16MUL() -> Script {
+    script! {
+        OP_DUP OP_ADD
+        OP_DUP OP_ADD
+        OP_DUP OP_ADD
+        OP_DUP OP_ADD
+    }
+}
+
 #[cfg(test)]
 mod test {
-    use crate::blake3::lookup_table::LookupTableVar;
-    use crate::limbs::u32::U32Var;
+    use crate::compression::blake3::lookup_table::LookupTableVar;
+    use crate::limbs::u32::{U32CompactVar, U32Var};
     use bitcoin_circle_stark::treepp::*;
     use bitcoin_script_dsl::bvar::{AllocVar, BVar};
     use bitcoin_script_dsl::constraint_system::ConstraintSystem;
@@ -315,5 +519,52 @@ mod test {
             },
         )
         .unwrap();
+    }
+
+    #[test]
+    fn test_u32_compact_from_to_u32() {
+        let mut prng = ChaCha20Rng::seed_from_u64(0);
+
+        let cs = ConstraintSystem::new_ref();
+        let a: u32 = prng.gen();
+
+        let a_var = U32Var::new_program_input(&cs, a).unwrap();
+        let a_compact_var = U32CompactVar::from(&a_var);
+        let a_recovered_var = U32Var::from(&a_compact_var);
+        let a_compact_recovered_var = U32CompactVar::from(&a_recovered_var);
+
+        a_var.equalverify(&a_recovered_var).unwrap();
+        a_compact_var.equalverify(&a_compact_recovered_var).unwrap();
+
+        test_program_without_opcat(cs, script! {}).unwrap();
+    }
+
+    #[test]
+    fn test_u32_compact_from_to_u32_corner() {
+        let cs = ConstraintSystem::new_ref();
+        let a = 0u32;
+
+        let a_var = U32Var::new_program_input(&cs, a).unwrap();
+        let a_compact_var = U32CompactVar::from(&a_var);
+        let a_recovered_var = U32Var::from(&a_compact_var);
+        let a_compact_recovered_var = U32CompactVar::from(&a_recovered_var);
+
+        a_var.equalverify(&a_recovered_var).unwrap();
+        a_compact_var.equalverify(&a_compact_recovered_var).unwrap();
+
+        test_program_without_opcat(cs, script! {}).unwrap();
+
+        let cs = ConstraintSystem::new_ref();
+        let a = 0x80000000u32;
+
+        let a_var = U32Var::new_program_input(&cs, a).unwrap();
+        let a_compact_var = U32CompactVar::from(&a_var);
+        let a_recovered_var = U32Var::from(&a_compact_var);
+        let a_compact_recovered_var = U32CompactVar::from(&a_recovered_var);
+
+        a_var.equalverify(&a_recovered_var).unwrap();
+        a_compact_var.equalverify(&a_compact_recovered_var).unwrap();
+
+        test_program_without_opcat(cs, script! {}).unwrap();
     }
 }

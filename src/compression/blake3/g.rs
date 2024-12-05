@@ -1,4 +1,4 @@
-use crate::blake3::lookup_table::LookupTableVar;
+use crate::compression::blake3::lookup_table::LookupTableVar;
 use crate::limbs::u32::U32Var;
 
 pub fn g(
@@ -32,9 +32,9 @@ pub fn g(
 
 #[cfg(test)]
 mod test {
-    use crate::blake3::g::g;
-    use crate::blake3::lookup_table::LookupTableVar;
-    use crate::blake3::reference::g_reference;
+    use crate::compression::blake3::g::g;
+    use crate::compression::blake3::lookup_table::LookupTableVar;
+    use crate::compression::blake3::reference::g_reference;
     use crate::limbs::u32::U32Var;
     use bitcoin_circle_stark::treepp::*;
     use bitcoin_script_dsl::bvar::{AllocVar, BVar};

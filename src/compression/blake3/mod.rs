@@ -1,4 +1,4 @@
-use crate::limbs::u32::U32Var;
+use crate::limbs::u32::{U32CompactVar, U32Var};
 use crate::limbs::u4::U4Var;
 use bitcoin_script_dsl::bvar::AllocVar;
 use bitcoin_script_dsl::constraint_system::ConstraintSystemRef;
@@ -161,10 +161,49 @@ impl<T: ToU4LimbVar> ToU4LimbVar for &[T] {
     }
 }
 
+#[derive(Clone)]
+pub struct Blake3CompactHashVar {
+    pub hash: [U32CompactVar; 8],
+}
+
+impl From<&Blake3HashVar> for Blake3CompactHashVar {
+    fn from(value: &Blake3HashVar) -> Self {
+        Self {
+            hash: [
+                U32CompactVar::from(&value.hash[0]),
+                U32CompactVar::from(&value.hash[1]),
+                U32CompactVar::from(&value.hash[2]),
+                U32CompactVar::from(&value.hash[3]),
+                U32CompactVar::from(&value.hash[4]),
+                U32CompactVar::from(&value.hash[5]),
+                U32CompactVar::from(&value.hash[6]),
+                U32CompactVar::from(&value.hash[7]),
+            ],
+        }
+    }
+}
+
+impl From<&Blake3CompactHashVar> for Blake3HashVar {
+    fn from(value: &Blake3CompactHashVar) -> Self {
+        Self {
+            hash: [
+                U32Var::from(&value.hash[0]),
+                U32Var::from(&value.hash[1]),
+                U32Var::from(&value.hash[2]),
+                U32Var::from(&value.hash[3]),
+                U32Var::from(&value.hash[4]),
+                U32Var::from(&value.hash[5]),
+                U32Var::from(&value.hash[6]),
+                U32Var::from(&value.hash[7]),
+            ],
+        }
+    }
+}
+
 #[cfg(test)]
 mod test {
-    use crate::blake3::reference::blake3_reference;
-    use crate::blake3::{hash, Blake3ConstantVar};
+    use crate::compression::blake3::reference::blake3_reference;
+    use crate::compression::blake3::{hash, Blake3ConstantVar};
     use crate::limbs::u32::U32Var;
     use bitcoin_circle_stark::treepp::*;
     use bitcoin_script_dsl::bvar::{AllocVar, BVar};

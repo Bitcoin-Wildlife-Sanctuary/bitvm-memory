@@ -1,2 +1,5 @@
-pub mod blake3;
 pub mod limbs;
+
+pub mod commitment;
+pub mod compression;
+pub mod keystore;

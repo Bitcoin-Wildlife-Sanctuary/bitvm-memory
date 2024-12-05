@@ -1,4 +1,4 @@
-use crate::blake3::lookup_table::LookupTableVar;
+use crate::compression::blake3::lookup_table::LookupTableVar;
 use anyhow::{Error, Result};
 use bitcoin::opcodes::Ordinary::OP_ADD;
 use bitcoin_circle_stark::treepp::*;
@@ -437,7 +437,7 @@ fn u4_get_shr3(stack: &mut Stack, options: &Options) -> Result<Script> {
 
 #[cfg(test)]
 mod test {
-    use crate::blake3::lookup_table::LookupTableVar;
+    use crate::compression::blake3::lookup_table::LookupTableVar;
     use crate::limbs::u4::U4Var;
     use bitcoin_circle_stark::treepp::*;
     use bitcoin_script_dsl::bvar::AllocVar;

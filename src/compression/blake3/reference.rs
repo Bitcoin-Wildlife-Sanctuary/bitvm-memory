@@ -1,4 +1,4 @@
-use crate::blake3::IV;
+use crate::compression::blake3::IV;
 use std::ops::BitXor;
 
 pub(crate) fn g_reference(

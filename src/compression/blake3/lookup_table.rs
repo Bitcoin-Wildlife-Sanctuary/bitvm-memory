@@ -491,7 +491,7 @@ impl AllocVar for RemainderTableVar {
 
 #[cfg(test)]
 mod test {
-    use crate::blake3::lookup_table::LookupTableVar;
+    use crate::compression::blake3::lookup_table::LookupTableVar;
     use bitcoin_circle_stark::treepp::*;
     use bitcoin_script_dsl::bvar::AllocVar;
     use bitcoin_script_dsl::constraint_system::ConstraintSystem;
